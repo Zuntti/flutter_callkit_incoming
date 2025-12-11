@@ -211,6 +211,10 @@ class CallkitNotificationManager(
         }
         notificationBuilder?.setChannelId(NOTIFICATION_CHANNEL_ID_INCOMING)
         notificationBuilder?.priority = NotificationCompat.PRIORITY_MAX
+        val extra = data.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA) as? HashMap<String, Any?>
+        val useSingleActionUi = extra?.get("useSingleActionUi") as? Boolean ?: false
+        val useCallStyleOnAndroid14 = extra?.get("useCallStyleOnAndroid14") as? Boolean ?: true
+
         val isCustomNotification =
             data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_CUSTOM_NOTIFICATION, false)
         val isCustomSmallExNotification =
@@ -312,7 +316,12 @@ class CallkitNotificationManager(
                 )
             }
             val caller = data.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, "")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val shouldUseCallStyle =
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                        useCallStyleOnAndroid14
+
+            if (shouldUseCallStyle) {
+                // On Android 14+ when allowed, use CallStyle for native call UI.
                 val person = Person.Builder().setName(caller).setImportant(
                     data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_IMPORTANT, true)
                 ).setBot(data.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_BOT, false)).build()
@@ -326,19 +335,31 @@ class CallkitNotificationManager(
             } else {
                 notificationBuilder?.setContentTitle(caller)
                 val textDecline = data.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_DECLINE, "")
-                val declineAction: NotificationCompat.Action = NotificationCompat.Action.Builder(
-                    R.drawable.ic_decline,
-                    if (TextUtils.isEmpty(textDecline)) context.getString(R.string.text_decline) else textDecline,
-                    getDeclinePendingIntent(notificationId, data)
-                ).build()
-                notificationBuilder?.addAction(declineAction)
                 val textAccept = data.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_ACCEPT, "")
-                val acceptAction: NotificationCompat.Action = NotificationCompat.Action.Builder(
-                    R.drawable.ic_accept,
-                    if (TextUtils.isEmpty(textDecline)) context.getString(R.string.text_accept) else textAccept,
-                    getAcceptPendingIntent(notificationId, data)
-                ).build()
-                notificationBuilder?.addAction(acceptAction)
+                if (useSingleActionUi) {
+                    // Single-button notification: only show the accept action with custom text.
+                    val singleAction: NotificationCompat.Action = NotificationCompat.Action.Builder(
+                        R.drawable.ic_accept,
+                        if (TextUtils.isEmpty(textAccept)) context.getString(R.string.text_accept) else textAccept,
+                        getAcceptPendingIntent(notificationId, data)
+                    ).build()
+                    notificationBuilder?.addAction(singleAction)
+                } else {
+                    // Default behavior: show both decline and accept actions.
+                    val declineAction: NotificationCompat.Action = NotificationCompat.Action.Builder(
+                        R.drawable.ic_decline,
+                        if (TextUtils.isEmpty(textDecline)) context.getString(R.string.text_decline) else textDecline,
+                        getDeclinePendingIntent(notificationId, data)
+                    ).build()
+                    notificationBuilder?.addAction(declineAction)
+
+                    val acceptAction: NotificationCompat.Action = NotificationCompat.Action.Builder(
+                        R.drawable.ic_accept,
+                        if (TextUtils.isEmpty(textAccept)) context.getString(R.string.text_accept) else textAccept,
+                        getAcceptPendingIntent(notificationId, data)
+                    ).build()
+                    notificationBuilder?.addAction(acceptAction)
+                }
             }
         }
         notificationBuilder?.setOngoing(true)

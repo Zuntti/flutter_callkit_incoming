@@ -15,17 +15,18 @@ import android.os.Looper
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
-import android.view.animation.AnimationUtils
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.hiennv.flutter_callkit_incoming.widgets.RippleRelativeLayout
-import de.hdodenhof.circleimageview.CircleImageView
 import kotlin.math.abs
 import android.view.ViewGroup.MarginLayoutParams
 import android.os.PowerManager
 import android.text.TextUtils
 import android.util.Log
+import android.view.Gravity
+import android.widget.Space
+import android.graphics.drawable.GradientDrawable
 
 class CallkitIncomingActivity : Activity() {
 
@@ -69,13 +70,12 @@ class CallkitIncomingActivity : Activity() {
     private lateinit var tvNameCaller: TextView
     private lateinit var tvNumber: TextView
     private lateinit var ivLogo: ImageView
-    private lateinit var ivAvatar: CircleImageView
+    private lateinit var ivAvatar: ImageView
 
     private lateinit var llAction: LinearLayout
-    private lateinit var ivAcceptCall: ImageView
+    private var ivAcceptCall: ImageView? = null
+    private var ivDeclineCall: ImageView? = null
     private lateinit var tvAccept: TextView
-
-    private lateinit var ivDeclineCall: ImageView
     private lateinit var tvDecline: TextView
 
     @Suppress("DEPRECATION")
@@ -97,7 +97,17 @@ class CallkitIncomingActivity : Activity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
         }
         transparentStatusAndNavigation()
-        setContentView(R.layout.activity_callkit_incoming)
+        // Decide which layout to use based on the useSingleActionUi flag in the extras.
+        val data = intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
+        val extra = data?.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA) as? HashMap<String, Any?>
+        val useSingleActionUi = extra?.get("useSingleActionUi") as? Boolean ?: false
+
+        val layoutResId = if (useSingleActionUi) {
+            R.layout.activity_callkit_incoming_single
+        } else {
+            R.layout.activity_callkit_incoming
+        }
+        setContentView(layoutResId)
         initView()
         incomingData(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -162,6 +172,11 @@ class CallkitIncomingActivity : Activity() {
         val data = intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
         if (data == null) finish()
 
+        val extra = data?.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA) as? HashMap<String, Any?>
+        val useSingleActionUi = extra?.get("useSingleActionUi") as? Boolean ?: false
+
+        val acceptButtonColorHex = extra?.get("acceptButtonColor") as? String
+
         val isShowFullLockedScreen =
             data?.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_SHOW_FULL_LOCKED_SCREEN, true)
         if (isShowFullLockedScreen == true) {
@@ -182,6 +197,21 @@ class CallkitIncomingActivity : Activity() {
             tvNameCaller.setTextColor(Color.parseColor(textColor))
             tvNumber.setTextColor(Color.parseColor(textColor))
         } catch (error: Exception) {
+        }
+
+        // Only recolor the accept button background for the single-button UI.
+        if (useSingleActionUi && !acceptButtonColorHex.isNullOrEmpty()) {
+            try {
+                val colorInt = Color.parseColor(acceptButtonColorHex)
+                val bg = tvAccept.background
+                if (bg is GradientDrawable) {
+                    bg.mutate()
+                    bg.setColor(colorInt)
+                } else {
+                    tvAccept.setBackgroundColor(colorInt)
+                }
+            } catch (error: Exception) {
+            }
         }
 
         val isShowLogo = data?.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_SHOW_LOGO, false)
@@ -207,21 +237,35 @@ class CallkitIncomingActivity : Activity() {
             ImageLoaderProvider.loadImage(this@CallkitIncomingActivity, avatarUrl, headers, R.drawable.ic_default_avatar, ivAvatar)
         }
 
-        val callType = data?.getInt(CallkitConstants.EXTRA_CALLKIT_TYPE, 0) ?: 0
-        if (callType > 0) {
-            ivAcceptCall.setImageResource(R.drawable.ic_video)
-        }
         val duration = data?.getLong(CallkitConstants.EXTRA_CALLKIT_DURATION, 0L) ?: 0L
         wakeLockRequest(duration)
 
         finishTimeout(data, duration)
 
         val textAccept = data?.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_ACCEPT, "")
-        tvAccept.text =
-            if (TextUtils.isEmpty(textAccept)) getString(R.string.text_accept) else textAccept
         val textDecline = data?.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_DECLINE, "")
-        tvDecline.text =
-            if (TextUtils.isEmpty(textDecline)) getString(R.string.text_decline) else textDecline
+
+        if (useSingleActionUi) {
+            // Single button UI: hide decline and center the accept button.
+            val llDecline: LinearLayout = findViewById(R.id.llDecline)
+            val spaceButtons: Space = findViewById(R.id.spaceButtons)
+            val llAccept: LinearLayout = findViewById(R.id.llAccept)
+            val llAction: LinearLayout = findViewById(R.id.llAction)
+
+            llDecline.visibility = View.GONE
+            spaceButtons.visibility = View.GONE
+
+            // Center the accept container within the parent action bar
+            llAction.gravity = Gravity.CENTER_HORIZONTAL
+
+            tvAccept.text =
+                if (TextUtils.isEmpty(textAccept)) getString(R.string.text_accept) else textAccept
+        } else {
+            tvAccept.text =
+                if (TextUtils.isEmpty(textAccept)) getString(R.string.text_accept) else textAccept
+            tvDecline.text =
+                if (TextUtils.isEmpty(textDecline)) getString(R.string.text_decline) else textDecline
+        }
 
         try {
             tvAccept.setTextColor(Color.parseColor(textColor))
@@ -283,24 +327,28 @@ class CallkitIncomingActivity : Activity() {
         params.setMargins(0, 0, 0, Utils.getNavigationBarHeight(this@CallkitIncomingActivity))
         llAction.layoutParams = params
 
-        ivAcceptCall = findViewById(R.id.ivAcceptCall)
         tvAccept = findViewById(R.id.tvAccept)
-        ivDeclineCall = findViewById(R.id.ivDeclineCall)
         tvDecline = findViewById(R.id.tvDecline)
-        animateAcceptCall()
 
-        ivAcceptCall.setOnClickListener {
+        // Icon buttons exist only in the default 2-button layout.
+        ivAcceptCall = findViewById(R.id.ivAcceptCall)
+        ivDeclineCall = findViewById(R.id.ivDeclineCall)
+
+        // Text labels should always be clickable in both layouts.
+        tvAccept.setOnClickListener {
             onAcceptClick()
         }
-        ivDeclineCall.setOnClickListener {
+        tvDecline.setOnClickListener {
             onDeclineClick()
         }
-    }
 
-    private fun animateAcceptCall() {
-        val shakeAnimation =
-            AnimationUtils.loadAnimation(this@CallkitIncomingActivity, R.anim.shake_anim)
-        ivAcceptCall.animation = shakeAnimation
+        // In the default layout, also make the icon buttons clickable.
+        ivAcceptCall?.setOnClickListener {
+            onAcceptClick()
+        }
+        ivDeclineCall?.setOnClickListener {
+            onDeclineClick()
+        }
     }
 
 

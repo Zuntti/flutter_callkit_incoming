@@ -22,4 +22,9 @@
     <dimen name="size_text_name">24sp</dimen>
     <dimen name="size_text_action">14sp</dimen>
     <dimen name="size_text_sub">12sp</dimen>
+
+    <dimen name="single_size_text_name">28sp</dimen>
+    <dimen name="single_size_text_action">30sp</dimen>
+    <dimen name="single_accept_button_padding_horizontal">55dp</dimen>
+    <dimen name="single_accept_button_padding_vertical">22dp</dimen>
 </resources>
