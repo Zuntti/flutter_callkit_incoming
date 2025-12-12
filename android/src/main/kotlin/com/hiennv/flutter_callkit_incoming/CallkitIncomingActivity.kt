@@ -288,14 +288,14 @@ class CallkitIncomingActivity : Activity() {
         val acceptCallColor =
             data?.getString(CallkitConstants.EXTRA_CALLKIT_ACCEPT_COLOR, "#4CAF50")
         try {
-            ivAcceptCall.setBackground(AppUtils.createCircleDrawable(Color.parseColor(acceptCallColor)))
+            ivAcceptCall?.setBackground(AppUtils.createCircleDrawable(Color.parseColor(acceptCallColor)))
         } catch (error: Exception) {
         }
 
         val declineCallColor =
             data?.getString(CallkitConstants.EXTRA_CALLKIT_DECLINE_COLOR, "#F44336")
         try {
-            ivDeclineCall.setBackground(AppUtils.createCircleDrawable(Color.parseColor(declineCallColor)))
+            ivDeclineCall?.setBackground(AppUtils.createCircleDrawable(Color.parseColor(declineCallColor)))
         } catch (error: Exception) {
         }
 

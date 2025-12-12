@@ -91,7 +91,7 @@
                     android:ellipsize="end"
                     android:maxLines="1"
                     android:textColor="@color/action_text"
-                    android:textSize="@dimen/single_size_text_action"
+                    android:textSize="@dimen/single_handle_text_size"
                     tools:text="Some info" />
 
             </LinearLayout>
@@ -163,7 +163,7 @@
                     android:paddingTop="@dimen/single_accept_button_padding_vertical"
                     android:paddingBottom="@dimen/single_accept_button_padding_vertical"
                     android:background="@drawable/bg_button_accept_single"
-                    android:textSize="@dimen/single_size_text_action"
+                    android:textSize="@dimen/single_button_text_size"
                     android:includeFontPadding="false"/>
 
             </LinearLayout>
