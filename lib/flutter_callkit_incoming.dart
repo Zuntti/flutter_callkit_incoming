@@ -134,6 +134,28 @@ class FlutterCallkitIncoming {
     await _channel.invokeMethod("hideCallkitIncoming", params.toJson());
   }
 
+  /// Start playing the same ringtone + vibration used for an incoming call,
+  /// without showing the incoming-call UI/notification.
+  /// Pass [ringtonePath] to use a custom sound, same as [AndroidParams.ringtonePath]
+  /// (file name of a raw resource in /android/app/src/main/res/raw). Leave it null
+  /// to use the app's default ringtone.
+  /// Keeps playing until [stopRingtone] is called: it survives anything that would
+  /// otherwise silence a call's ringtone (screen off, volume-key silence). A real
+  /// incoming call ringing at the same time still takes over the sound while it
+  /// rings, and this resumes automatically once that call's ringing stops.
+  /// Only Android
+  static Future<void> startRingtone({String? ringtonePath}) async {
+    await _channel.invokeMethod("startRingtone", {
+      'android': {'ringtonePath': ringtonePath},
+    });
+  }
+
+  /// Stop the ringtone + vibration started by [startRingtone].
+  /// Only Android
+  static Future<void> stopRingtone() async {
+    await _channel.invokeMethod("stopRingtone");
+  }
+
   /// Start an Outgoing call.
   /// On iOS, using Callkit(create a history into the Phone app).
   /// On Android, Nothing(only callback event listener).

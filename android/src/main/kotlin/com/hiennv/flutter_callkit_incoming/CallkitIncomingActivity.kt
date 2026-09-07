@@ -445,8 +445,8 @@ class CallkitIncomingActivity : Activity() {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             val soundPlayerManager = FlutterCallkitIncomingPlugin.getInstance()?.getCallkitSoundPlayerManager()
             if (soundPlayerManager?.isPlaying == true) {
-                soundPlayerManager.stop()
-                return true 
+                soundPlayerManager.stopCallRinging()
+                return true
             }
         }
         return super.onKeyDown(keyCode, event)

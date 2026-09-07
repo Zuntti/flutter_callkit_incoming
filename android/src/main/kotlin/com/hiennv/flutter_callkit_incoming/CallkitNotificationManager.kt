@@ -872,7 +872,7 @@ class CallkitNotificationManager(
         }
         // End Signify modification
 
-        callkitSoundPlayerManager?.stop()
+        callkitSoundPlayerManager?.stopCallRinging()
 
         context.sendBroadcast(CallkitIncomingActivity.getIntentEnded(context, isAccepted))
         val notificationId =
@@ -1047,7 +1047,7 @@ class CallkitNotificationManager(
                     return
                 }
                 if (callkitSoundPlayerManager?.isPlaying == true) {
-                    callkitSoundPlayerManager.stop()
+                    callkitSoundPlayerManager.stopCallRinging()
                 }
             }
         }
@@ -1082,7 +1082,7 @@ class CallkitNotificationManager(
                 callkitNotification.id, it.notification
             )
         }
-        callkitSoundPlayerManager?.stop()
+        callkitSoundPlayerManager?.stopCallRinging()
     }
 
 

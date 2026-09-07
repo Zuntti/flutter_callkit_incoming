@@ -39,10 +39,21 @@ class CallkitSoundPlayerManager(private val context: Context) {
 
     private var keepRingingForFullScreenIntent: Boolean = false
 
+    // Tracks who "owns" the currently playing/paused ringtone: a real call notification,
+    // or a manual playManual() session started on demand from Dart. This lets a manual
+    // session survive every automatic/call-driven stop (call ended, screen off, volume key) -
+    // it only ever stops via stopManualRinging(). A real call is still always audible: it
+    // overrides a playing manual session, and the manual session resumes once the call's
+    // ringing stops, since it was never explicitly stopped.
+    private enum class PlaybackSource { NONE, MANUAL, CALL }
+
+    private var currentSource: PlaybackSource = PlaybackSource.NONE
+    private var pendingManualData: Bundle? = null
+
     inner class ScreenOffCallkitIncomingBroadcastReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (isPlaying && !keepRingingForFullScreenIntent) {
-                stop()
+                stopCallRinging()
             }
         }
     }
@@ -50,32 +61,75 @@ class CallkitSoundPlayerManager(private val context: Context) {
     private var screenOffCallkitIncomingBroadcastReceiver =
         ScreenOffCallkitIncomingBroadcastReceiver()
 
-
+    /** Start ringing for an incoming call/notification. May override a currently playing manual session. */
     fun play(data: Bundle) {
+        currentSource = PlaybackSource.CALL
+        startPlayback(data)
+    }
+
+    /** Start ringing on demand from Dart. Keeps playing (surviving call/screen-off/volume-key stops) until [stopManualRinging] is called. */
+    fun playManual(data: Bundle) {
+        currentSource = PlaybackSource.MANUAL
+        pendingManualData = data
+        startPlayback(data)
+    }
+
+    private fun startPlayback(data: Bundle) {
         this.isPlaying = true
         this.prepare()
         this.playSound(data)
         this.playVibrator()
 
-        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
-        context.registerReceiver(screenOffCallkitIncomingBroadcastReceiver, filter)
-    }
-
-    fun stop() {
-        this.isPlaying = false
-
-        ringtone?.stop()
-        vibrator?.cancel()
-        ringtone = null
-        vibrator = null
         try {
             context.unregisterReceiver(screenOffCallkitIncomingBroadcastReceiver)
         } catch (_: Exception) {
         }
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        context.registerReceiver(screenOffCallkitIncomingBroadcastReceiver, filter)
+    }
+
+    /**
+     * Stop ringing that was started for a call/notification (call ended, notification cleared,
+     * screen off, volume key silence). No-op while a manual session owns the current sound;
+     * if a manual session is only pending (was overridden by a call that's now stopping), it resumes.
+     */
+    fun stopCallRinging() {
+        when (currentSource) {
+            PlaybackSource.MANUAL -> return
+            PlaybackSource.CALL -> {
+                val manualData = pendingManualData
+                if (manualData != null) {
+                    currentSource = PlaybackSource.MANUAL
+                    startPlayback(manualData)
+                } else {
+                    stopInternal()
+                }
+            }
+            PlaybackSource.NONE -> return
+        }
+    }
+
+    /** Stop ringing started via [playManual]. Always stops it, without touching a real call's ringing if one is currently overriding it. */
+    fun stopManualRinging() {
+        pendingManualData = null
+        if (currentSource == PlaybackSource.MANUAL) {
+            stopInternal()
+        }
+    }
+
+    fun stop() {
+        pendingManualData = null
+        stopInternal()
     }
 
     fun destroy() {
+        pendingManualData = null
+        stopInternal()
+    }
+
+    private fun stopInternal() {
         this.isPlaying = false
+        currentSource = PlaybackSource.NONE
 
         ringtone?.stop()
         vibrator?.cancel()

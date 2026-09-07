@@ -429,12 +429,23 @@ class FlutterCallkitIncomingPlugin : FlutterPlugin, MethodCallHandler, ActivityA
                 // EDIT - clear the incoming notification/ring (after accept/decline/timeout)
                 "hideCallkitIncoming" -> {
                     val data = Data(call.arguments() ?: HashMap())
-                    callkitSoundPlayerManager?.stop()
+                    callkitSoundPlayerManager?.stopCallRinging()
                     callkitNotificationManager?.clearIncomingNotification(data.toBundle(), false)
                     result.success(true)
                 }
 
                 "endNativeSubsystemOnly" -> {
+                    result.success(true)
+                }
+
+                "startRingtone" -> {
+                    val data = Data(call.arguments() ?: HashMap())
+                    callkitSoundPlayerManager?.playManual(data.toBundle())
+                    result.success(true)
+                }
+
+                "stopRingtone" -> {
+                    callkitSoundPlayerManager?.stopManualRinging()
                     result.success(true)
                 }
 
