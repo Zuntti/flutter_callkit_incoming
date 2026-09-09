@@ -58,11 +58,11 @@ class CallkitIncomingActivity : Activity() {
         fun getIntentEnded(context: Context, isAccepted: Boolean): Intent {
             val intent = Intent("${context.packageName}.${ACTION_ENDED_CALL_INCOMING}")
             intent.putExtra("ACCEPTED", isAccepted)
+            // Must stay an implicit (package-scoped) broadcast: the receiver is registered
+            // dynamically via registerReceiver() in onCreate(), not declared in the manifest,
+            // so an explicit component target (setClassName) has nowhere to be delivered and
+            // is silently dropped, leaving the full-screen Activity open after the call ends.
             intent.setPackage(context.packageName)
-            intent.setClassName(
-                context.packageName,
-                "com.hiennv.flutter_callkit_incoming.CallkitIncomingActivity"
-            )
             return intent
         }
     }
