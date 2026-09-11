@@ -791,25 +791,30 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             appDelegate.didActivateAudioSession(audioSession)
         }
 
-        if(self.answerCall?.hasConnected ?? false){
-            sendDefaultAudioInterruptionNotificationToStartAudioResource()
-            return
-        }
-        if(self.outgoingCall?.hasConnected ?? false){
-            sendDefaultAudioInterruptionNotificationToStartAudioResource()
-            return
-        }
-        self.outgoingCall?.startCall(withAudioSession: audioSession) {success in
-            if success {
-                self.callManager.addCall(self.outgoingCall!)
-                self.outgoingCall?.startAudio()
+        // Only a call that isn't connected yet needs (re-)setup via startCall/ansCall.
+        // An already-connected call reaching here is a resume (e.g. hold released
+        // after a cellular call interruption, or a second VoIP call ending).
+        let alreadyConnected = (self.answerCall?.hasConnected ?? false) ||
+            (self.outgoingCall?.hasConnected ?? false)
+        if !alreadyConnected {
+            self.outgoingCall?.startCall(withAudioSession: audioSession) {success in
+                if success {
+                    self.callManager.addCall(self.outgoingCall!)
+                    self.outgoingCall?.startAudio()
+                }
+            }
+            self.answerCall?.ansCall(withAudioSession: audioSession) { success in
+                if success{
+                    self.answerCall?.startAudio()
+                }
             }
         }
-        self.answerCall?.ansCall(withAudioSession: audioSession) { success in
-            if success{
-                self.answerCall?.startAudio()
-            }
-        }
+
+        // Re-apply on every activation, not only the first. A resume from hold
+        // re-activates the audio session, but this used to return early right
+        // above for the already-connected case, so configureAudioSession() never
+        // ran again and no isActive event reached Dart - silent audio after
+        // resuming from hold, with no signal for the app to recover from it.
         sendDefaultAudioInterruptionNotificationToStartAudioResource()
         configureAudioSession()
 
@@ -908,4 +913,3 @@ public class FlutterCallkitIncomingPlugin: NSObject, FlutterPlugin {
         SwiftFlutterCallkitIncomingPlugin.register(with: registrar)
     }
 }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          

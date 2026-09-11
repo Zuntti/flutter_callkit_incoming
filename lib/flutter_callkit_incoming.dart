@@ -55,11 +55,16 @@ class FlutterCallkitIncoming {
   /// background or terminated.
   static Future<void> onBackgroundMessage(
       BackgroundMessageHandler handler) async {
-    final CallbackHandle pluginHandle = PluginUtilities.getCallbackHandle(
+    final CallbackHandle? pluginHandle = PluginUtilities.getCallbackHandle(
       _flutterCallkitIncomingCallbackDispatcher,
-    )!;
-    final CallbackHandle userHandle =
-        PluginUtilities.getCallbackHandle(handler)!;
+    );
+    final CallbackHandle? userHandle =
+        PluginUtilities.getCallbackHandle(handler);
+    if (pluginHandle == null || userHandle == null) {
+      throw ArgumentError(
+        'onBackgroundMessage handler must be a top-level or static function.',
+      );
+    }
     await _channel.invokeMapMethod('registerBackgroundHandler', {
       'pluginHandle': pluginHandle.toRawHandle(),
       'userHandle': userHandle.toRawHandle(),
