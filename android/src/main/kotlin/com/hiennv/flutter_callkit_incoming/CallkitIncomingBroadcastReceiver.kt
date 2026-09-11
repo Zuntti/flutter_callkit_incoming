@@ -2,6 +2,8 @@ package com.hiennv.flutter_callkit_incoming
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -219,6 +221,71 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Timeout fallback
+    // -------------------------------------------------------------------------
+    // The primary ring-duration expiry is Notification.setTimeoutAfter(), set on
+    // the incoming-call notification (see CallkitNotificationManager). That is
+    // purely an OS/NotificationManagerService mechanism with no independent
+    // backup: if the system doesn't honor it (observed unreliable on some OEM
+    // notification stacks for this ongoing/CATEGORY_CALL/full-screen-intent
+    // shape), nothing else in the plugin ever ends a ringing call locally.
+    //
+    // This schedules a redundant AlarmManager fallback alongside it, so the call
+    // still gets cleaned up (marked missed, notification cleared) even if the
+    // notification's own timeout never fires. It intentionally uses the inexact,
+    // Doze-tolerant setAndAllowWhileIdle() rather than an exact alarm: this is a
+    // last-resort safety net for a ring that's already going nowhere, not a
+    // real-time signal, so being off by a few seconds under Doze is harmless -
+    // and it avoids requiring the SCHEDULE_EXACT_ALARM permission entirely.
+    //
+    // It broadcasts the same ACTION_CALL_TIMEOUT used by the notification's own
+    // delete-intent, so if both end up firing for the same call, the second one
+    // is a no-op (CallkitConnection.find() returns null once already resolved).
+    // It's cancelled on every path that resolves the call (accept/decline/end/
+    // timeout) so an already-handled call is never re-marked missed later.
+
+    private fun getTimeoutFallbackPendingIntent(context: Context, data: Bundle): PendingIntent {
+        val notificationId =
+            data.getString(CallkitConstants.EXTRA_CALLKIT_ID, "callkit_incoming").hashCode()
+        val intent = getIntentTimeout(context, data)
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        return PendingIntent.getBroadcast(context, notificationId, intent, flags)
+    }
+
+    private fun scheduleTimeoutFallback(context: Context, data: Bundle) {
+        try {
+            val duration = data.getLong(CallkitConstants.EXTRA_CALLKIT_DURATION, 60000L)
+            if (duration <= 0L) return
+            val alarmManager =
+                context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val pendingIntent = getTimeoutFallbackPendingIntent(context, data)
+            val triggerAt = System.currentTimeMillis() + duration
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            } else {
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "scheduleTimeoutFallback failed: ${e.message}")
+        }
+    }
+
+    private fun cancelTimeoutFallback(context: Context, data: Bundle) {
+        try {
+            val alarmManager =
+                context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val pendingIntent = getTimeoutFallbackPendingIntent(context, data)
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        } catch (e: Exception) {
+            Log.w(TAG, "cancelTimeoutFallback failed: ${e.message}")
+        }
+    }
 
     @SuppressLint("MissingPermission")
     override fun onReceive(context: Context, intent: Intent) {
@@ -231,6 +298,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
             "${context.packageName}.${CallkitConstants.ACTION_CALL_INCOMING}" -> {
                 try {
                     registerTelecomIncomingCall(context, data)
+                    scheduleTimeoutFallback(context, data)
                     val incomingData = Data.fromBundle(data)
                     if (incomingData.isFullScreen) {
                         val intent = CallkitIncomingActivity.getIntent(context, data)
@@ -263,6 +331,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
 
             "${context.packageName}.${CallkitConstants.ACTION_CALL_ACCEPT}" -> {
                 try {
+                    cancelTimeoutFallback(context, data)
                     driveTelecomConnection(context, data, CallkitConstants.ACTION_CALL_ACCEPT)
                     FlutterCallkitIncomingPlugin.notifyEventCallbacks(CallkitEventCallback.CallEvent.ACCEPT, data)
                     // start service and show ongoing call when call is accepted
@@ -281,6 +350,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
 
             "${context.packageName}.${CallkitConstants.ACTION_CALL_DECLINE}" -> {
                 try {
+                    cancelTimeoutFallback(context, data)
                     driveTelecomConnection(context, data, CallkitConstants.ACTION_CALL_DECLINE)
                     FlutterCallkitIncomingPlugin.notifyEventCallbacks(CallkitEventCallback.CallEvent.DECLINE, data)
                     // clear notification
@@ -294,6 +364,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
 
             "${context.packageName}.${CallkitConstants.ACTION_CALL_ENDED}" -> {
                 try {
+                    cancelTimeoutFallback(context, data)
                     driveTelecomConnection(context, data, CallkitConstants.ACTION_CALL_ENDED)
                     FlutterCallkitIncomingPlugin.notifyEventCallbacks(CallkitEventCallback.CallEvent.END, data)
                     // clear notification and stop service
@@ -308,6 +379,7 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
 
             "${context.packageName}.${CallkitConstants.ACTION_CALL_TIMEOUT}" -> {
                 try {
+                    cancelTimeoutFallback(context, data)
                     driveTelecomConnection(context, data, CallkitConstants.ACTION_CALL_TIMEOUT)
                     // clear notification and show miss notification
                     val notificationManager = getCallkitNotificationManager()
